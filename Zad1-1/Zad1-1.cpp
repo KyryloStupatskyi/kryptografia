@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <map>
 #include <string>
+#include <cmath> // do obliczeń statystycznych
 
 using namespace std;
 
@@ -82,7 +83,7 @@ unordered_map<char, char> invertKey(const unordered_map<char, char>& keyMap) {
 
 string encrypt(const string& text, const unordered_map<char, char>& keyMap) {
     string result;
-    for (char i: text) {
+    for (char i : text) {
         result += keyMap.at(i);
     }
     return result;
@@ -96,10 +97,11 @@ string decrypt(const string& text, const unordered_map<char, char>& invertedKeyM
     return result;
 }
 
+// Funkcja do obliczania n-gramów
 map <string, int> get_multigrams(const int order, const string& text) {
     map<string, int> multigram_map;
 
-    for (int i = 0; i < text.length()-(order-1); i++) {
+    for (int i = 0; i < text.length() - (order - 1); i++) {
         auto bg = multigram_map.find(text.substr(i, order));
         if (bg != multigram_map.end()) {
             bg->second++;
@@ -111,18 +113,53 @@ map <string, int> get_multigrams(const int order, const string& text) {
     return multigram_map;
 }
 
+// Funkcja do tworzenia stringa z n-gramów
 string multigram_map_stringify(const map<string, int>& mapper) {
     string result;
-    for (const auto& p: mapper) {
+    for (const auto& p : mapper) {
         result.append(p.first + "   " + std::to_string(p.second) + "\n");
     }
     return result;
 }
 
+// Funkcja do odczytu referencyjnej bazy n-gramów
+map<string, double> read_reference_ngrams(const string& filename) {
+    map<string, double> refNgramMap;
+    ifstream file(filename);
+    if (!file.is_open()) {
+        cerr << "Error opening reference file: " << filename << endl;
+        exit(1);
+    }
+
+    string ngram;
+    double probability;
+    while (file >> ngram >> probability) {
+        refNgramMap[ngram] = probability;
+    }
+    file.close();
+    return refNgramMap;
+}
+
+double calculate_chi_square(const map<string, int>& observed, const map<string, double>& expected, int totalNgrams) {
+    double chiSquare = 0.0;
+    for (const auto& pair : observed) {
+        const string& ngram = pair.first;
+        int observedCount = pair.second;
+
+        if (expected.find(ngram) != expected.end()) {
+            double expectedCount = expected.at(ngram) * totalNgrams;
+            chiSquare += pow(observedCount - expectedCount, 2) / expectedCount;
+        }
+    }
+    return chiSquare;
+}
+
+
 int main(int argc, char* argv[]) {
-    string inputFile, outputFile, keyFile, engramOutFile;
-    bool encryptMode = false, decryptMode = false;
+    string inputFile, outputFile, keyFile, engramOutFile, referenceFile;
+    bool encryptMode = false, decryptMode = false, chiSquareMode = false;
     char engramMode = 0;
+    char refNgramMode = 0;
 
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
@@ -145,61 +182,70 @@ int main(int argc, char* argv[]) {
             engramMode = arg[2];
             engramOutFile = argv[++i];
         }
+        else if (arg == "-r1" || arg == "-r2" || arg == "-r3" || arg == "-r4") {
+            refNgramMode = arg[2];
+            referenceFile = argv[++i];
+        }
+        else if (arg == "-s") {
+            chiSquareMode = true;
+        }
     }
 
-    if ((encryptMode && decryptMode) || (!encryptMode && !decryptMode) || inputFile.empty() || outputFile.empty() || keyFile.empty()) {
-        cerr << "Usage: ./program -e|-d -k keyfile.txt -i inputfile.txt -o outputfile.txt" << endl;
+    if ((encryptMode && decryptMode) || (!encryptMode && !decryptMode && !chiSquareMode) || inputFile.empty() || (chiSquareMode && referenceFile.empty())) {
+        cerr << "Usage: ./program -e|-d -k keyfile.txt -i inputfile.txt -o outputfile.txt [-rX referencefile.txt] [-s]" << endl;
         return 1;
     }
 
     string text = readFile(inputFile);
     text = toUpperCase(removeNonLetters(text));
 
-    unordered_map<char, char> keyMap = readKey(keyFile);
-    unordered_map<char, char> invertedKeyMap = invertKey(keyMap);
+    if (encryptMode || decryptMode) {
+        unordered_map<char, char> keyMap = readKey(keyFile);
+        unordered_map<char, char> invertedKeyMap = invertKey(keyMap);
 
-    string result;
-
-    if (encryptMode) {
-        result = encrypt(text, keyMap);
-    }
-    else if (decryptMode) {
-        result = decrypt(text, invertedKeyMap);
-    }
-
-    writeFile(outputFile, result);
-
-    cout << "Operation completed successfully!" << endl;
-
-    if(engramMode) {
-        //std::cout << "Engram mode: " << engramMode << std::endl;
-        map<string, int> multigrams;
-
-        switch (engramMode) {
-            case '1':
-                multigrams = get_multigrams(1, text);
-            /*
-            for (const auto& p: multigrams) {
-                cout << "Monogram: " << p.first << " Val: " << p.second << endl;
-            }
-            */
-            writeFile(engramOutFile, multigram_map_stringify(multigrams));
-            break;
-            case '2':
-                multigrams = get_multigrams(2, text);
-                writeFile(engramOutFile, multigram_map_stringify(multigrams));
-            break;
-            case '3':
-                multigrams = get_multigrams(3, text);
-                writeFile(engramOutFile, multigram_map_stringify(multigrams));
-            break;
-            case '4':
-                multigrams = get_multigrams(4, text);
-                writeFile(engramOutFile, multigram_map_stringify(multigrams));
-            break;
-            default:
-                cerr << "Invalid multigram mode!" << endl;
+        string result;
+        if (encryptMode) {
+            result = encrypt(text, keyMap);
         }
+        else if (decryptMode) {
+            result = decrypt(text, invertedKeyMap);
+        }
+
+        writeFile(outputFile, result);
+        cout << "Operation completed successfully!" << endl;
+    }
+
+    if (engramMode) {
+        map<string, int> multigrams;
+        switch (engramMode) {
+        case '1':
+            multigrams = get_multigrams(1, text);
+            break;
+        case '2':
+            multigrams = get_multigrams(2, text);
+            break;
+        case '3':
+            multigrams = get_multigrams(3, text);
+            break;
+        case '4':
+            multigrams = get_multigrams(4, text);
+            break;
+        default:
+            cerr << "Invalid multigram mode!" << endl;
+            return 1;
+        }
+        writeFile(engramOutFile, multigram_map_stringify(multigrams));
+    }
+
+    if (chiSquareMode && refNgramMode) {
+        int ngramOrder = refNgramMode - '0';
+        map<string, int> observedNgrams = get_multigrams(ngramOrder, text);
+        map<string, double> referenceNgrams = read_reference_ngrams(referenceFile);
+
+        int totalNgrams = text.length() - (ngramOrder - 1);
+        double chiSquare = calculate_chi_square(observedNgrams, referenceNgrams, totalNgrams);
+
+        cout << "Chi-Square value: " << chiSquare << endl;
     }
 
     return 0;
