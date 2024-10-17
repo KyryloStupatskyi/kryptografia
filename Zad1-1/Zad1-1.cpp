@@ -7,6 +7,7 @@
 #include <map>
 #include <string>
 #include <cmath> // do obliczeń statystycznych
+#include <iomanip>
 
 using namespace std;
 
@@ -125,6 +126,7 @@ string multigram_map_stringify(const map<string, int>& mapper) {
 // Funkcja do odczytu referencyjnej bazy n-gramów
 map<string, double> read_reference_ngrams(const string& filename) {
     map<string, double> refNgramMap;
+    map<string, double> countNgramMap;
     ifstream file(filename);
     if (!file.is_open()) {
         cerr << "Error opening reference file: " << filename << endl;
@@ -132,10 +134,57 @@ map<string, double> read_reference_ngrams(const string& filename) {
     }
 
     string ngram;
-    double probability;
-    while (file >> ngram >> probability) {
-        refNgramMap[ngram] = probability;
+    int count = 0;
+    double sum = 0;
+
+    for (string line; getline(file, line);) {
+        count  = stoi(line.substr(line.find(' ') + 1, line.length()));
+        countNgramMap[line.substr(0, line.find(' '))] = count;
+        sum += count;
     }
+    for (const auto& p : countNgramMap) {
+        refNgramMap.insert(pair<string, double>(p.first, p.second/sum));
+    }
+    /*
+    for (const auto& p : refNgramMap) {
+        std::cout << std::setprecision(3) << std::fixed;
+        std::cout << "Letter: " << p.first << " \nProbability: " << p.second << std::endl;
+    }
+    */
+    file.close();
+    return refNgramMap;
+}
+
+// Funkcja do odczytu referencyjnej bazy n-gramów z odrzuceniem najmniej wystepujacych
+map<string, double> read_reference_ngrams_skip_infrequent(const string& filename) {
+    map<string, double> refNgramMap;
+    map<string, double> countNgramMap;
+    ifstream file(filename);
+    if (!file.is_open()) {
+        cerr << "Error opening reference file: " << filename << endl;
+        exit(1);
+    }
+
+    string ngram;
+    int count = 0;
+    double sum = 0;
+
+    for (string line; getline(file, line);) {
+        count  = stoi(line.substr(line.find(' ') + 1, line.length()));
+        countNgramMap[line.substr(0, line.find(' '))] = count;
+        sum += count;
+    }
+    for (const auto& p : countNgramMap) {
+        double prob = p.second/sum;
+        if(prob >= 0.01)
+            refNgramMap.insert(pair<string, double>(p.first, prob));
+    }
+    /*
+    for (const auto& p : refNgramMap) {
+        std::cout << std::setprecision(3) << std::fixed;
+        std::cout << "Letter: " << p.first << " \nProbability: " << p.second << std::endl;
+    }
+    */
     file.close();
     return refNgramMap;
 }
@@ -241,10 +290,12 @@ int main(int argc, char* argv[]) {
         int ngramOrder = refNgramMode - '0';
         map<string, int> observedNgrams = get_multigrams(ngramOrder, text);
         map<string, double> referenceNgrams = read_reference_ngrams(referenceFile);
+        //map<string, double> referenceNgrams = read_reference_ngrams_skip_infrequent(referenceFile);
 
         int totalNgrams = text.length() - (ngramOrder - 1);
         double chiSquare = calculate_chi_square(observedNgrams, referenceNgrams, totalNgrams);
 
+        std::cout << std::setprecision(8) << std::fixed;
         cout << "Chi-Square value: " << chiSquare << endl;
     }
 
