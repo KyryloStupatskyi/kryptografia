@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <cctype>
 #include <algorithm>
+#include <map>
 #include <string>
 
 using namespace std;
@@ -95,9 +96,33 @@ string decrypt(const string& text, const unordered_map<char, char>& invertedKeyM
     return result;
 }
 
+map <string, int> get_multigrams(const int order, const string& text) {
+    map<string, int> multigram_map;
+
+    for (int i = 0; i < text.length()-(order-1); i++) {
+        auto bg = multigram_map.find(text.substr(i, order));
+        if (bg != multigram_map.end()) {
+            bg->second++;
+        }
+        else {
+            multigram_map.insert(pair<string, int>(text.substr(i, order), 1));
+        }
+    }
+    return multigram_map;
+}
+
+string multigram_map_stringify(const map<string, int>& mapper) {
+    string result;
+    for (const auto& p: mapper) {
+        result.append(p.first + "   " + std::to_string(p.second) + "\n");
+    }
+    return result;
+}
+
 int main(int argc, char* argv[]) {
-    string inputFile, outputFile, keyFile;
+    string inputFile, outputFile, keyFile, engramOutFile;
     bool encryptMode = false, decryptMode = false;
+    char engramMode = 0;
 
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
@@ -115,6 +140,10 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "-d") {
             decryptMode = true;
+        }
+        else if (arg == "-g1" || arg == "-g2" || arg == "-g3" || arg == "-g4") {
+            engramMode = arg[2];
+            engramOutFile = argv[++i];
         }
     }
 
@@ -141,6 +170,37 @@ int main(int argc, char* argv[]) {
     writeFile(outputFile, result);
 
     cout << "Operation completed successfully!" << endl;
+
+    if(engramMode) {
+        //std::cout << "Engram mode: " << engramMode << std::endl;
+        map<string, int> multigrams;
+
+        switch (engramMode) {
+            case '1':
+                multigrams = get_multigrams(1, text);
+            /*
+            for (const auto& p: multigrams) {
+                cout << "Monogram: " << p.first << " Val: " << p.second << endl;
+            }
+            */
+            writeFile(engramOutFile, multigram_map_stringify(multigrams));
+            break;
+            case '2':
+                multigrams = get_multigrams(2, text);
+                writeFile(engramOutFile, multigram_map_stringify(multigrams));
+            break;
+            case '3':
+                multigrams = get_multigrams(3, text);
+                writeFile(engramOutFile, multigram_map_stringify(multigrams));
+            break;
+            case '4':
+                multigrams = get_multigrams(4, text);
+                writeFile(engramOutFile, multigram_map_stringify(multigrams));
+            break;
+            default:
+                cerr << "Invalid multigram mode!" << endl;
+        }
+    }
 
     return 0;
 }
